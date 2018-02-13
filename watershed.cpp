@@ -5,6 +5,7 @@
 
 #include <cstdio>
 #include <iostream>
+#include <unistd.h>
 
 using namespace cv;
 using namespace std;
@@ -22,7 +23,10 @@ static void help()
             "\tw or SPACE - run watershed segmentation algorithm\n"
             "\t\t(before running it, *roughly* mark the areas to segment on the image)\n"
             "\t  (before that, roughly outline several markers on the image)\n"
-            "\tm - switch on/off color selecting mode" << endl;
+            "\tm - switch on/off color selecting mode\n"
+            "\tz - save mask(don't ask me why z)\n"
+            "\tl - load mask\n"
+            "\tf - apply filter" << endl;
 }
 Mat markerMask, img, curMask;
 CvScalar curColor = CV_RGB(0, 0, 0);
@@ -45,6 +49,10 @@ const CvScalar cloudsColor = CV_RGB(224, 224, 224);
 
 const CvScalar unknownColor = CV_RGB(0, 0, 0);
 
+const string IMAGE_WINDOW_NAME("image");
+const string WATERSHED_TRANS_WINDOW_NAME("watershed transform");
+const string MASK_WINDOW_NAME("mask");
+
 void mark(Mat src_, CvPoint seed, CvScalar color=CV_RGB(255, 0, 0))
 {
     IplImage* src = new IplImage(src_);
@@ -64,10 +72,10 @@ static void onMouse( int event, int x, int y, int flags, void* )
         return;
     }
 
-    if( event == EVENT_LBUTTONDOWN ) {
+    if( event == EVENT_RBUTTONDOWN ) {
         prevPt = Point(x,y);
     }
-    else if( event == EVENT_MOUSEMOVE && (flags & EVENT_FLAG_LBUTTON) )
+    else if( event == EVENT_MOUSEMOVE && (flags & EVENT_FLAG_RBUTTON) && !(flags & EVENT_FLAG_CTRLKEY) )
     {
         Point pt(x, y);
         if( prevPt.x < 0 )
@@ -75,14 +83,9 @@ static void onMouse( int event, int x, int y, int flags, void* )
         line( markerMask, prevPt, pt, Scalar::all(255), 5, 8, 0 );
         line( img, prevPt, pt, Scalar::all(255), 5, 8, 0 );
         prevPt = pt;
-        imshow("image", img);
-    } else if( event == EVENT_RBUTTONUP || !(flags & EVENT_FLAG_RBUTTON) ) {
-        prevPt = Point(-1,-1);
+        imshow(IMAGE_WINDOW_NAME, img);
     }
-    else if( event == EVENT_RBUTTONDOWN ) {
-        prevPt = Point(x,y);
-    }
-    else if( event == EVENT_MOUSEMOVE && (flags & EVENT_FLAG_RBUTTON) )
+    else if( event == EVENT_MOUSEMOVE && (flags & EVENT_FLAG_RBUTTON) && (flags & EVENT_FLAG_CTRLKEY) )
     {
         Point pt(x, y);
         if( prevPt.x < 0 )
@@ -90,7 +93,7 @@ static void onMouse( int event, int x, int y, int flags, void* )
         line( markerMask, prevPt, pt, Scalar::all(0), 15, 8, 0 );
         line( img, prevPt, pt, Scalar::all(0), 15, 8, 0 );
         prevPt = pt;
-        imshow("image", img);
+        imshow(IMAGE_WINDOW_NAME, img);
     } else {
         prevPt = Point(-1,-1);
     }
@@ -101,18 +104,85 @@ static void onMouse_Mask( int event, int x, int y, int flags, void* ) {
     case CV_EVENT_MOUSEMOVE:
         break;
 
-    case CV_EVENT_LBUTTONDOWN:
+    case CV_EVENT_RBUTTONDOWN:
         mark(curMask, cvPoint(x, y), curColor);
-        imshow("mask", curMask);
+        imshow(MASK_WINDOW_NAME, curMask);
         break;
 
-    case CV_EVENT_LBUTTONUP:
+    case CV_EVENT_RBUTTONUP:
         break;
     }
 }
 
+inline bool file_exists(const string& name) {
+    return ( access( name.c_str(), F_OK ) != -1 );
+}
+
+inline string genMaskFileName(const string& filename) {
+    const std::string ext(".jpg");
+    if ( filename != ext &&
+         filename.size() > ext.size() &&
+         filename.substr(filename.size() - ext.size()) == ".jpg" )
+    {
+        return filename.substr(0, filename.size() - ext.size()) + "_mask.png";
+    }
+
+    return "";
+}
+
+inline void saveMask(const string& maskFilename) {
+    if ( !maskFilename.empty() )
+    {
+//        if (file_exists(maskFilename))  {
+//            cerr << "Warning! File " << maskFilename << " already exists.\n Are you sure you want to overwrite it (y/n)?" << endl;
+//            char c = (char)waitKey(0);
+//            while (c != 'y' && c != 'n') {
+//                cout << "Please enter y or n" << endl;
+//                c = (char)waitKey(0);
+//            }
+
+//            if (c == 'n') {
+//                cout << "File won't be saved" << endl;
+//                return;
+//            }
+//        }
+
+        cout << "Saving mask to " << maskFilename << endl;
+        imwrite(maskFilename, curMask);
+    } else {
+        cerr << "Something went wrong, can't generate name for mask" << endl;
+    }
+}
+
+inline void loadMask(const string& maskFileName) {
+    if (!file_exists(maskFileName)) {
+        cerr << "No file to load!" << endl;
+        return;
+    }
+
+    curMask = imread(maskFileName, 1);
+    imshow(MASK_WINDOW_NAME, curMask);
+}
+
 const int IMG_WIDTH = 1200;
 const int IMG_HEIGHT = 900;
+
+inline void createMaskWindow() {
+    namedWindow( MASK_WINDOW_NAME, cv::WINDOW_NORMAL | CV_GUI_NORMAL);
+    resizeWindow(MASK_WINDOW_NAME, IMG_WIDTH, IMG_HEIGHT);
+    setMouseCallback( MASK_WINDOW_NAME, onMouse_Mask, 0 );
+}
+
+void filter(int ksize = 21) {
+    if (!(curMask.rows > 0 && curMask.cols > 0)) {
+        cerr << "Mask is not created yet!" << endl;
+        return;
+    }
+
+    cout << "Applying median filter to mask" << endl;
+    medianBlur( curMask, curMask, ksize );
+    imshow(MASK_WINDOW_NAME, curMask);
+}
 
 int main( int argc, char** argv )
 {
@@ -131,15 +201,15 @@ int main( int argc, char** argv )
         return 0;
     }
     help();
-    namedWindow( "image", WINDOW_NORMAL | CV_GUI_NORMAL);
+    namedWindow( IMAGE_WINDOW_NAME, WINDOW_NORMAL | CV_GUI_NORMAL);
 
     img0.copyTo(img);
     cvtColor(img, markerMask, COLOR_BGR2GRAY);
     cvtColor(markerMask, imgGray, COLOR_GRAY2BGR);
     markerMask = Scalar::all(0);
-    imshow( "image", img );
-    resizeWindow("image", IMG_WIDTH, IMG_HEIGHT);
-    setMouseCallback( "image", onMouse, 0 );
+    imshow( IMAGE_WINDOW_NAME, img );
+    resizeWindow(IMAGE_WINDOW_NAME, IMG_WIDTH, IMG_HEIGHT);
+    setMouseCallback( IMAGE_WINDOW_NAME, onMouse, 0 );
 
     bool isColorSelectMode = false;
     for(;;)
@@ -176,7 +246,7 @@ int main( int argc, char** argv )
             {
                 markerMask = Scalar::all(0);
                 img0.copyTo(img);
-                imshow( "image", img );
+                imshow( IMAGE_WINDOW_NAME, img );
             }
             else if( c == 'w' || c == ' ' )
             {
@@ -230,19 +300,23 @@ int main( int argc, char** argv )
                 curMask = wshed.clone();
                 wshed = wshed*0.5 + imgGray*0.5;
 
-                namedWindow( "watershed transform", cv::WINDOW_NORMAL);
-                imshow( "watershed transform", wshed );
-                resizeWindow("watershed transform", IMG_WIDTH, IMG_HEIGHT);
+                namedWindow( WATERSHED_TRANS_WINDOW_NAME, cv::WINDOW_NORMAL | CV_GUI_NORMAL);
+                imshow( WATERSHED_TRANS_WINDOW_NAME, wshed );
+                resizeWindow(WATERSHED_TRANS_WINDOW_NAME, IMG_WIDTH, IMG_HEIGHT);
             } else if (c == 's') {
                 if (!(curMask.rows > 0 && curMask.cols > 0)) {
                     cerr << "Mask is not created yet!" << endl;
                     continue;
                 }
-
-                namedWindow( "mask", cv::WINDOW_NORMAL);
-                resizeWindow("mask", IMG_WIDTH, IMG_HEIGHT);
-                imshow("mask", curMask);
-                setMouseCallback( "mask", onMouse_Mask, 0 );
+                createMaskWindow();
+                imshow(MASK_WINDOW_NAME, curMask);
+            } else if (c == 'z') {
+                saveMask(genMaskFileName(filename));
+            } else if (c == 'l') {
+                createMaskWindow();
+                loadMask(genMaskFileName(filename));
+            } else if (c == 'f') {
+                filter();
             }
         } else {
             switch (c) {
