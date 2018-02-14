@@ -6,6 +6,10 @@
 #include <cstdio>
 #include <iostream>
 #include <unistd.h>
+#include <unordered_set>
+#include <unordered_map>
+#include <algorithm>
+#include <thread>
 
 using namespace cv;
 using namespace std;
@@ -26,11 +30,13 @@ static void help()
             "\tm - switch on/off color selecting mode\n"
             "\tz - save mask(don't ask me why z)\n"
             "\tl - load mask\n"
-            "\tf - apply filter" << endl;
+            "\tf - apply filter\n"
+            "\t1-9 - set brush thickness" << endl;
 }
 Mat markerMask, img, curMask;
 CvScalar curColor = CV_RGB(0, 0, 0);
 Point prevPt(-1, -1);
+int curThickness = 5;
 
 // terrain
 const CvScalar justTerrainColor = CV_RGB(102, 51, 0);
@@ -52,6 +58,51 @@ const CvScalar unknownColor = CV_RGB(0, 0, 0);
 const string IMAGE_WINDOW_NAME("image");
 const string WATERSHED_TRANS_WINDOW_NAME("watershed transform");
 const string MASK_WINDOW_NAME("mask");
+
+namespace std {
+template<>
+class hash<CvScalar> {
+public:
+    size_t operator()(const CvScalar &cvScalar) const
+    {
+        const size_t prime = 31;
+        size_t res = 1;
+
+        size_t h1 = std::hash<double>()(cvScalar.val[0]);
+        size_t h2 = std::hash<double>()(cvScalar.val[1]);
+        size_t h3 = std::hash<double>()(cvScalar.val[2]);
+        size_t h4 = std::hash<double>()(cvScalar.val[3]);
+
+        res = prime * res + (h1 ^ (h1 >> 32));
+        res = prime * res + (h2 ^ (h2 >> 32));
+        res = prime * res + (h3 ^ (h3 >> 32));
+        res = prime * res + (h4 ^ (h4 >> 32));
+
+        return res;
+    }
+};
+}
+
+inline bool operator==(const CvScalar& lhs, const CvScalar& rhs)
+{
+    return lhs.val[0] == rhs.val[0] &&
+            lhs.val[1] == rhs.val[1] &&
+            lhs.val[2] == rhs.val[2] &&
+            lhs.val[3] == rhs.val[3];
+}
+
+void initColorSet(unordered_set<CvScalar>& colors) {
+    colors.insert(justTerrainColor);
+    colors.insert(snowColor);
+    colors.insert(sandColor);
+    colors.insert(forestColor);
+    colors.insert(grassColor);
+    colors.insert(roadsColor);
+    colors.insert(waterColor);
+    colors.insert(buildingsColor);
+    colors.insert(cloudsColor);
+    colors.insert(unknownColor);
+}
 
 void mark(Mat src_, CvPoint seed, CvScalar color=CV_RGB(255, 0, 0))
 {
@@ -80,8 +131,8 @@ static void onMouse( int event, int x, int y, int flags, void* )
         Point pt(x, y);
         if( prevPt.x < 0 )
             prevPt = pt;
-        line( markerMask, prevPt, pt, Scalar::all(255), 5, 8, 0 );
-        line( img, prevPt, pt, Scalar::all(255), 5, 8, 0 );
+        line( markerMask, prevPt, pt, Scalar::all(255), curThickness, 8, 0 );
+        line( img, prevPt, pt, Scalar::all(255), curThickness, 8, 0 );
         prevPt = pt;
         imshow(IMAGE_WINDOW_NAME, img);
     }
@@ -90,8 +141,8 @@ static void onMouse( int event, int x, int y, int flags, void* )
         Point pt(x, y);
         if( prevPt.x < 0 )
             prevPt = pt;
-        line( markerMask, prevPt, pt, Scalar::all(0), 15, 8, 0 );
-        line( img, prevPt, pt, Scalar::all(0), 15, 8, 0 );
+        line( markerMask, prevPt, pt, Scalar::all(0), 3 * curThickness, 8, 0 );
+        line( img, prevPt, pt, Scalar::all(0), 3 * curThickness, 8, 0 );
         prevPt = pt;
         imshow(IMAGE_WINDOW_NAME, img);
     } else {
@@ -133,19 +184,19 @@ inline string genMaskFileName(const string& filename) {
 inline void saveMask(const string& maskFilename) {
     if ( !maskFilename.empty() )
     {
-//        if (file_exists(maskFilename))  {
-//            cerr << "Warning! File " << maskFilename << " already exists.\n Are you sure you want to overwrite it (y/n)?" << endl;
-//            char c = (char)waitKey(0);
-//            while (c != 'y' && c != 'n') {
-//                cout << "Please enter y or n" << endl;
-//                c = (char)waitKey(0);
-//            }
+        //        if (file_exists(maskFilename))  {
+        //            cerr << "Warning! File " << maskFilename << " already exists.\n Are you sure you want to overwrite it (y/n)?" << endl;
+        //            char c = (char)waitKey(0);
+        //            while (c != 'y' && c != 'n') {
+        //                cout << "Please enter y or n" << endl;
+        //                c = (char)waitKey(0);
+        //            }
 
-//            if (c == 'n') {
-//                cout << "File won't be saved" << endl;
-//                return;
-//            }
-//        }
+        //            if (c == 'n') {
+        //                cout << "File won't be saved" << endl;
+        //                return;
+        //            }
+        //        }
 
         cout << "Saving mask to " << maskFilename << endl;
         imwrite(maskFilename, curMask);
@@ -173,14 +224,85 @@ inline void createMaskWindow() {
     setMouseCallback( MASK_WINDOW_NAME, onMouse_Mask, 0 );
 }
 
-void filter(int ksize = 21) {
+inline CvScalar getColor(Mat& img, int i, int j) {
+    auto vec3bCol = img.at<Vec3b>(i, j);
+    auto r = vec3bCol[2];
+    auto g = vec3bCol[1];
+    auto b = vec3bCol[0];
+    return CV_RGB(r, g, b);
+}
+
+inline Vec3b cvScalar2Vec3b(CvScalar& sc) {
+    auto r = sc.val[0];
+    auto g = sc.val[1];
+    auto b = sc.val[2];
+    return Vec3b(r, g, b);
+}
+
+void processWindow(Mat& img, unordered_set<CvScalar>& validColors, int winSize, int x, int y) {
+    unordered_map<CvScalar, int> colorsCnt;
+
+    int sizeX = min(winSize, img.cols - x);
+    int sizeY = min(winSize, img.rows - y);
+
+    for (size_t i = x; i < x + sizeX; ++i) {
+        for (size_t j = y; j < y + sizeY; ++j) {
+            if (i >= img.cols || j >= img.rows) {
+                cerr << "Point (" << i << ", " << j << ") doesn't belong to image" << endl << endl;
+                return;
+            }
+            auto curPixelCol = getColor(img, j, i);
+
+            if (validColors.find(curPixelCol) != validColors.end()) {
+                colorsCnt[curPixelCol]++;
+            }
+        }
+    }
+
+    if (colorsCnt.empty()) {
+        cerr << "No valid colors in this window, skipping" << endl;
+        return;
+    }
+
+    auto mostRecentColor = std::max_element(colorsCnt.begin(), colorsCnt.end(),
+                                            [](const pair<CvScalar, int>& p1, const pair<CvScalar, int>& p2) {
+        return p1.second < p2.second; })->first;
+
+    for (size_t i = x; i < x + sizeX; ++i) {
+        for (size_t j = y; j < y + sizeY; ++j) {
+            auto curPixelCol = getColor(img, j, i);
+            if (validColors.find(curPixelCol) == validColors.end()) {
+//                cerr << curPixelCol.val[2] << endl;
+//                cerr << curPixelCol.val[1] << endl;
+//                cerr << curPixelCol.val[0] << endl << endl;
+                img.at<Vec3b>(j, i) = cvScalar2Vec3b(mostRecentColor);
+            }
+        }
+    }
+}
+
+void invalidColorFilter(Mat& img, unordered_set<CvScalar>& validColors, int winSize) {
+    if (img.cols <= winSize || img.rows <= winSize || winSize <= 0) {
+        cerr << "Bad window size" << endl;
+        return;
+    }
+
+    for (size_t i = 0; i < img.cols / winSize; ++i) {
+        for (size_t j = 0; j < img.rows / winSize; ++j) {
+            processWindow(img, validColors, winSize, i * winSize, j * winSize);
+        }
+    }
+}
+
+void filter(unordered_set<CvScalar>& validColors, int ksize = 10) {
     if (!(curMask.rows > 0 && curMask.cols > 0)) {
         cerr << "Mask is not created yet!" << endl;
         return;
     }
 
-    cout << "Applying median filter to mask" << endl;
-    medianBlur( curMask, curMask, ksize );
+    cout << "Applying filter to mask" << endl;
+    invalidColorFilter( curMask, validColors, ksize );
+    cout << "done!" << endl;
     imshow(MASK_WINDOW_NAME, curMask);
 }
 
@@ -201,6 +323,10 @@ int main( int argc, char** argv )
         return 0;
     }
     help();
+
+    unordered_set<CvScalar> validColors;
+    initColorSet(validColors);
+
     namedWindow( IMAGE_WINDOW_NAME, WINDOW_NORMAL | CV_GUI_NORMAL);
 
     img0.copyTo(img);
@@ -316,7 +442,11 @@ int main( int argc, char** argv )
                 createMaskWindow();
                 loadMask(genMaskFileName(filename));
             } else if (c == 'f') {
-                filter();
+                // TODO: do it in separate thread
+                filter(validColors);
+            } else if (c >= '1' && c <= '9') {
+                cout << "Setting brush thikness to " << curThickness << endl;
+                curThickness = c - '0';
             }
         } else {
             switch (c) {
