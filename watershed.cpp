@@ -28,7 +28,7 @@ static void help()
             "\t\t(before running it, *roughly* mark the areas to segment on the image)\n"
             "\t  (before that, roughly outline several markers on the image)\n"
             "\tm - switch on/off color selecting mode\n"
-            "\tz - save mask(don't ask me why z)\n"
+            "\tz - save mask\n"
             "\tl - load mask\n"
             "\tf - apply filter\n"
             "\t1-9 - set brush thickness" << endl;
@@ -182,6 +182,11 @@ inline string genMaskFileName(const string& filename) {
 }
 
 inline void saveMask(const string& maskFilename) {
+    if (!(curMask.rows > 0 && curMask.cols > 0)) {
+        cerr << "Nothing to save" << endl;
+        return;
+    }
+
     if ( !maskFilename.empty() )
     {
         //        if (file_exists(maskFilename))  {
@@ -205,16 +210,6 @@ inline void saveMask(const string& maskFilename) {
     }
 }
 
-inline void loadMask(const string& maskFileName) {
-    if (!file_exists(maskFileName)) {
-        cerr << "No file to load!" << endl;
-        return;
-    }
-
-    curMask = imread(maskFileName, 1);
-    imshow(MASK_WINDOW_NAME, curMask);
-}
-
 const int IMG_WIDTH = 1200;
 const int IMG_HEIGHT = 900;
 
@@ -223,6 +218,19 @@ inline void createMaskWindow() {
     resizeWindow(MASK_WINDOW_NAME, IMG_WIDTH, IMG_HEIGHT);
     setMouseCallback( MASK_WINDOW_NAME, onMouse_Mask, 0 );
 }
+
+inline void loadMask(const string& maskFileName) {
+    if (!file_exists(maskFileName)) {
+        cerr << "No file to load!" << endl;
+        return;
+    }
+
+    createMaskWindow();
+    curMask = imread(maskFileName, 1);
+    imshow(MASK_WINDOW_NAME, curMask);
+}
+
+
 
 inline CvScalar getColor(Mat& img, int i, int j) {
     auto vec3bCol = img.at<Vec3b>(i, j);
@@ -260,7 +268,8 @@ void processWindow(Mat& img, unordered_set<CvScalar>& validColors, int winSize, 
     }
 
     if (colorsCnt.empty()) {
-        cerr << "No valid colors in this window, skipping" << endl;
+        cerr << "No valid colors in window (" << x << ", " << y <<
+                ") - (" << x + sizeX << ", " << y + sizeY << "),\n skipping" << endl;
         return;
     }
 
@@ -439,7 +448,6 @@ int main( int argc, char** argv )
             } else if (c == 'z') {
                 saveMask(genMaskFileName(filename));
             } else if (c == 'l') {
-                createMaskWindow();
                 loadMask(genMaskFileName(filename));
             } else if (c == 'f') {
                 // TODO: do it in separate thread
@@ -494,7 +502,15 @@ int main( int argc, char** argv )
                 isColorSelectMode = false;
                 cout << "Exiting color selecting mode" << endl;
                 break;
-
+            case 'z':
+                saveMask(genMaskFileName(filename));
+                break;
+            case 'l':
+                loadMask(genMaskFileName(filename));
+            case 9: // tab
+                break;
+            case -23: // alt
+                break;
             default:
                 cout << "Unknown color" << endl;
                 curColor = unknownColor;
