@@ -367,6 +367,8 @@ inline void refreshMainImg() {
     }
 
     imshow( IMAGE_WINDOW_NAME, img );
+
+    cout << "Main image has been refreshed!" << endl;
 }
 
 inline void loadMarkers(const string& filename) {
@@ -452,6 +454,7 @@ int main( int argc, char** argv )
                 markerMask = Scalar::all(0);
                 img0.copyTo(img);
                 imshow( IMAGE_WINDOW_NAME, img );
+                cout << "Main image and markers has been cleared" << endl;
             }
             else if( c == 'w' || c == ' ' )
             {
@@ -527,6 +530,8 @@ int main( int argc, char** argv )
             } else if (c >= '1' && c <= '9') {
                 cout << "Setting brush thikness to " << c - '0' << endl;
                 curThickness = c - '0';
+            } else if (c == 'h') {
+                refreshMainImg();
             }
         } else {
             switch (c) {
