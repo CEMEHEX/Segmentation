@@ -147,6 +147,10 @@ inline void refreshMainImg() {
     imshow( IMAGE_WINDOW_NAME, img );
 }
 
+inline int blackBrushThickness(int redBrushThickness) {
+    return redBrushThickness * redBrushThickness;
+}
+
 static void onMouse( int event, int x, int y, int flags, void* )
 {
     if( x < 0 || x >= img.cols || y < 0 || y >= img.rows ) {
@@ -171,8 +175,8 @@ static void onMouse( int event, int x, int y, int flags, void* )
         Point pt(x, y);
         if( prevPt.x < 0 )
             prevPt = pt;
-        line( markerMask, prevPt, pt, Scalar::all(0), 3 * curThickness, 8, 0 );
-        line( img, prevPt, pt, Scalar::all(0), 3 * curThickness, 8, 0 );
+        line( markerMask, prevPt, pt, Scalar::all(0), blackBrushThickness(curThickness), 8, 0 );
+        line( img, prevPt, pt, Scalar::all(0), blackBrushThickness(curThickness), 8, 0 );
         prevPt = pt;
         imshow(IMAGE_WINDOW_NAME, img);
     } else {
