@@ -132,7 +132,7 @@ static void onMouse( int event, int x, int y, int flags, void* )
         if( prevPt.x < 0 )
             prevPt = pt;
         line( markerMask, prevPt, pt, Scalar::all(255), curThickness, 8, 0 );
-        line( img, prevPt, pt, Scalar::all(255), curThickness, 8, 0 );
+        line( img, prevPt, pt, Scalar(0, 0, 255), curThickness, 8, 0 );
         prevPt = pt;
         imshow(IMAGE_WINDOW_NAME, img);
     }
@@ -205,6 +205,7 @@ inline void saveMask(const string& maskFilename) {
 
         cout << "Saving mask to " << maskFilename << endl;
         imwrite(maskFilename, curMask);
+        cout << "Saved successfully!" << endl;
     } else {
         cerr << "Something went wrong, can't generate name for mask" << endl;
     }
@@ -296,9 +297,9 @@ void invalidColorFilter(Mat& img, unordered_set<CvScalar>& validColors, int winS
         return;
     }
 
-    for (size_t i = 0; i < img.cols / winSize; ++i) {
-        for (size_t j = 0; j < img.rows / winSize; ++j) {
-            processWindow(img, validColors, winSize, i * winSize, j * winSize);
+    for (size_t i = 0; i < img.cols ; i += winSize) {
+        for (size_t j = 0; j < img.rows; j += winSize) {
+            processWindow(img, validColors, winSize, i, j);
         }
     }
 }
@@ -453,7 +454,7 @@ int main( int argc, char** argv )
                 // TODO: do it in separate thread
                 filter(validColors);
             } else if (c >= '1' && c <= '9') {
-                cout << "Setting brush thikness to " << curThickness << endl;
+                cout << "Setting brush thikness to " << c - '0' << endl;
                 curThickness = c - '0';
             }
         } else {
