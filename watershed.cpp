@@ -31,7 +31,8 @@ static void help()
             "\tz - save mask\n"
             "\tl - load mask\n"
             "\tf - apply filter\n"
-            "\t1-9 - set brush thickness" << endl;
+            "\t1-9 - set brush thickness\n"
+            "\th - refresh image" << endl;
 }
 Mat markerMask, img, img0, curMask;
 CvScalar curColor = CV_RGB(0, 0, 0);
@@ -117,6 +118,35 @@ void mark(Mat src_, CvPoint seed, CvScalar color=CV_RGB(255, 0, 0))
                  0);
 }
 
+inline CvScalar getColor(Mat& img, int i, int j) {
+    auto vec3bCol = img.at<Vec3b>(i, j);
+    auto r = vec3bCol[2];
+    auto g = vec3bCol[1];
+    auto b = vec3bCol[0];
+    return CV_RGB(r, g, b);
+}
+
+inline Vec3b cvScalar2Vec3b(const CvScalar& sc) {
+    auto r = sc.val[0];
+    auto g = sc.val[1];
+    auto b = sc.val[2];
+    return Vec3b(r, g, b);
+}
+
+inline void refreshMainImg() {
+    img0.copyTo(img);
+
+    for (size_t i = 0 ; i < img.cols; ++i) {
+        for (size_t j = 0; j < img.rows; ++j) {
+            if (markerMask.at<uchar>(j, i) == 255) {
+                img.at<Vec3b>(j, i) = cvScalar2Vec3b(CV_RGB(255, 0, 0));
+            }
+        }
+    }
+
+    imshow( IMAGE_WINDOW_NAME, img );
+}
+
 static void onMouse( int event, int x, int y, int flags, void* )
 {
     if( x < 0 || x >= img.cols || y < 0 || y >= img.rows ) {
@@ -146,6 +176,9 @@ static void onMouse( int event, int x, int y, int flags, void* )
         prevPt = pt;
         imshow(IMAGE_WINDOW_NAME, img);
     } else {
+        if (event == EVENT_RBUTTONUP /*&& (flags & EVENT_FLAG_CTRLKEY)*/) { // uncomment for speeding up
+            refreshMainImg();
+        }
         prevPt = Point(-1,-1);
     }
 }
@@ -193,7 +226,7 @@ inline string genMaskFileName(const string& filename) {
 
 inline void saveMask(const string& maskFilename) {
     if (!(curMask.rows > 0 && curMask.cols > 0)) {
-        cerr << "Nothing to save" << endl;
+        cerr << "No mask to save" << endl;
         return;
     }
 
@@ -243,23 +276,6 @@ inline void loadMask(const string& maskFileName) {
     imshow(MASK_WINDOW_NAME, curMask);
 
     cout << "Done!" << endl;
-}
-
-
-
-inline CvScalar getColor(Mat& img, int i, int j) {
-    auto vec3bCol = img.at<Vec3b>(i, j);
-    auto r = vec3bCol[2];
-    auto g = vec3bCol[1];
-    auto b = vec3bCol[0];
-    return CV_RGB(r, g, b);
-}
-
-inline Vec3b cvScalar2Vec3b(const CvScalar& sc) {
-    auto r = sc.val[0];
-    auto g = sc.val[1];
-    auto b = sc.val[2];
-    return Vec3b(r, g, b);
 }
 
 void processWindow(Mat& img, unordered_set<CvScalar>& validColors, int winSize, int x, int y) {
@@ -341,7 +357,7 @@ inline string genMarkersFileName(const string& filename) {
 
 inline void saveMarkers(const string& filename) {
     if (!(markerMask.rows > 0 && markerMask.cols > 0)) {
-        cerr << "Nothing to save" << endl;
+        cerr << "No markers to save" << endl;
         return;
     }
 
@@ -353,22 +369,6 @@ inline void saveMarkers(const string& filename) {
     } else {
         cerr << "Something went wrong, can't generate name for markers" << endl;
     }
-}
-
-inline void refreshMainImg() {
-    img0.copyTo(img);
-
-    for (size_t i = 0 ; i < img.cols; ++i) {
-        for (size_t j = 0; j < img.rows; ++j) {
-            if (markerMask.at<uchar>(j, i) == 255) {
-                img.at<Vec3b>(j, i) = cvScalar2Vec3b(CV_RGB(255, 0, 0));
-            }
-        }
-    }
-
-    imshow( IMAGE_WINDOW_NAME, img );
-
-    cout << "Main image has been refreshed!" << endl;
 }
 
 inline void loadMarkers(const string& filename) {
@@ -540,6 +540,7 @@ int main( int argc, char** argv )
                     curThickness = c - '0';
                 } else if (c == 'h') {
                     refreshMainImg();
+                    cout << "Main image has been refreshed!" << endl;
                 }
             } else {
                 switch (c) {
