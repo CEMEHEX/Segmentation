@@ -33,7 +33,7 @@ static void help()
             "\tf - apply filter\n"
             "\t1-9 - set brush thickness" << endl;
 }
-Mat markerMask, img, curMask;
+Mat markerMask, img, img0, curMask;
 CvScalar curColor = CV_RGB(0, 0, 0);
 Point prevPt(-1, -1);
 int curThickness = 5;
@@ -169,16 +169,26 @@ inline bool file_exists(const string& name) {
     return ( access( name.c_str(), F_OK ) != -1 );
 }
 
-inline string genMaskFileName(const string& filename) {
+inline string removeExtention(const string& filename) {
     const std::string ext(".jpg");
     if ( filename != ext &&
          filename.size() > ext.size() &&
          filename.substr(filename.size() - ext.size()) == ".jpg" )
     {
-        return filename.substr(0, filename.size() - ext.size()) + "_mask.png";
+        return filename.substr(0, filename.size() - ext.size());
     }
 
+    cerr << "Can't remove extention" << endl;
     return "";
+}
+
+inline string genMaskFileName(const string& filename) {
+    string pureFilename = removeExtention(filename);
+    if (pureFilename.empty()) {
+        return "";
+    }
+
+    return pureFilename + "_mask.png";
 }
 
 inline void saveMask(const string& maskFilename) {
@@ -222,13 +232,17 @@ inline void createMaskWindow() {
 
 inline void loadMask(const string& maskFileName) {
     if (!file_exists(maskFileName)) {
-        cerr << "No file to load!" << endl;
+        cerr << "No mask file to load!" << endl;
         return;
     }
+
+    cout << "Loading mask..." << endl;
 
     createMaskWindow();
     curMask = imread(maskFileName, 1);
     imshow(MASK_WINDOW_NAME, curMask);
+
+    cout << "Done!" << endl;
 }
 
 
@@ -241,7 +255,7 @@ inline CvScalar getColor(Mat& img, int i, int j) {
     return CV_RGB(r, g, b);
 }
 
-inline Vec3b cvScalar2Vec3b(CvScalar& sc) {
+inline Vec3b cvScalar2Vec3b(const CvScalar& sc) {
     auto r = sc.val[0];
     auto g = sc.val[1];
     auto b = sc.val[2];
@@ -316,6 +330,60 @@ void filter(unordered_set<CvScalar>& validColors, int ksize = 10) {
     imshow(MASK_WINDOW_NAME, curMask);
 }
 
+inline string genMarkersFileName(const string& filename) {
+    string pureFilename = removeExtention(filename);
+    if (pureFilename.empty()) {
+        return "";
+    }
+
+    return pureFilename + "_zMarkers.png";
+}
+
+inline void saveMarkers(const string& filename) {
+    if (!(markerMask.rows > 0 && markerMask.cols > 0)) {
+        cerr << "Nothing to save" << endl;
+        return;
+    }
+
+    if ( !filename.empty() )
+    {
+        cout << "Saving markers to " << filename << endl;
+        imwrite(filename, markerMask);
+        cout << "Saved successfully!" << endl;
+    } else {
+        cerr << "Something went wrong, can't generate name for markers" << endl;
+    }
+}
+
+inline void refreshMainImg() {
+    img0.copyTo(img);
+
+    for (size_t i = 0 ; i < img.cols; ++i) {
+        for (size_t j = 0; j < img.rows; ++j) {
+            if (markerMask.at<uchar>(j, i) == 255) {
+                img.at<Vec3b>(j, i) = cvScalar2Vec3b(CV_RGB(255, 0, 0));
+            }
+        }
+    }
+
+    imshow( IMAGE_WINDOW_NAME, img );
+}
+
+inline void loadMarkers(const string& filename) {
+    if (!file_exists(filename)) {
+        cerr << "No markers file to load!" << endl;
+        return;
+    }
+
+    cout << "Loading markers..." << endl;
+
+    markerMask = imread(filename, 1);
+    cvtColor(markerMask, markerMask, CV_RGB2GRAY);
+    refreshMainImg();
+
+    cout << "Done!" << endl;
+}
+
 int main( int argc, char** argv )
 {
     cv::CommandLineParser parser(argc, argv, "{help h | | }{ @input | ../data/fruits.jpg | }");
@@ -325,7 +393,8 @@ int main( int argc, char** argv )
         return 0;
     }
     string filename = parser.get<string>("@input");
-    Mat img0 = imread(filename, 1), imgGray;
+    img0 = imread(filename, 1);
+    Mat imgGray;
 
     if( img0.empty() )
     {
@@ -448,8 +517,10 @@ int main( int argc, char** argv )
                 imshow(MASK_WINDOW_NAME, curMask);
             } else if (c == 'z') {
                 saveMask(genMaskFileName(filename));
+                saveMarkers(genMarkersFileName(filename));
             } else if (c == 'l') {
                 loadMask(genMaskFileName(filename));
+                loadMarkers(genMarkersFileName(filename));
             } else if (c == 'f') {
                 // TODO: do it in separate thread
                 filter(validColors);
