@@ -296,9 +296,9 @@ void processWindow(Mat& img, unordered_set<CvScalar>& validColors, int winSize, 
         for (size_t j = y; j < y + sizeY; ++j) {
             auto curPixelCol = getColor(img, j, i);
             if (validColors.find(curPixelCol) == validColors.end()) {
-//                cerr << curPixelCol.val[2] << endl;
-//                cerr << curPixelCol.val[1] << endl;
-//                cerr << curPixelCol.val[0] << endl << endl;
+                //                cerr << curPixelCol.val[2] << endl;
+                //                cerr << curPixelCol.val[1] << endl;
+                //                cerr << curPixelCol.val[0] << endl << endl;
                 img.at<Vec3b>(j, i) = cvScalar2Vec3b(mostRecentColor);
             }
         }
@@ -386,6 +386,62 @@ inline void loadMarkers(const string& filename) {
     cout << "Done!" << endl;
 }
 
+void runWatershed(Mat& imgGray) {
+    int i, j, compCount = 0;
+    vector<vector<Point> > contours;
+    vector<Vec4i> hierarchy;
+
+    findContours(markerMask, contours, hierarchy, RETR_CCOMP, CHAIN_APPROX_SIMPLE);
+
+    if( contours.empty() )
+        return;
+    Mat markers(markerMask.size(), CV_32S);
+    markers = Scalar::all(0);
+    int idx = 0;
+    for( ; idx >= 0; idx = hierarchy[idx][0], compCount++ )
+        drawContours(markers, contours, idx, Scalar::all(compCount+1), -1, 8, hierarchy, INT_MAX);
+
+    if( compCount == 0 )
+        return;
+
+    vector<Vec3b> colorTab;
+    for( i = 0; i < compCount; i++ )
+    {
+        int b = theRNG().uniform(0, 255);
+        int g = theRNG().uniform(0, 255);
+        int r = theRNG().uniform(0, 255);
+
+        colorTab.push_back(Vec3b((uchar)b, (uchar)g, (uchar)r));
+    }
+
+    double t = (double)getTickCount();
+    watershed( img0, markers );
+    t = (double)getTickCount() - t;
+    printf( "execution time = %gms\n", t*1000./getTickFrequency() );
+
+    Mat wshed(markers.size(), CV_8UC3);
+
+    // paint the watershed image
+    for( i = 0; i < markers.rows; i++ )
+        for( j = 0; j < markers.cols; j++ )
+        {
+            int index = markers.at<int>(i,j);
+            if( index == -1 )
+                wshed.at<Vec3b>(i,j) = Vec3b(255,255,255);
+            else if( index <= 0 || index > compCount )
+                wshed.at<Vec3b>(i,j) = Vec3b(0,0,0);
+            else
+                wshed.at<Vec3b>(i,j) = colorTab[index - 1];
+        }
+
+    curMask = wshed.clone();
+    wshed = wshed*0.5 + imgGray*0.5;
+
+    namedWindow( WATERSHED_TRANS_WINDOW_NAME, cv::WINDOW_NORMAL | CV_GUI_NORMAL);
+    imshow( WATERSHED_TRANS_WINDOW_NAME, wshed );
+    resizeWindow(WATERSHED_TRANS_WINDOW_NAME, IMG_WIDTH, IMG_HEIGHT);
+}
+
 int main( int argc, char** argv )
 {
     cv::CommandLineParser parser(argc, argv, "{help h | | }{ @input | ../data/fruits.jpg | }");
@@ -448,149 +504,102 @@ int main( int argc, char** argv )
             continue;
         }
 
-        if (!isColorSelectMode) {
-            if( c == 'r' )
-            {
-                markerMask = Scalar::all(0);
-                img0.copyTo(img);
-                imshow( IMAGE_WINDOW_NAME, img );
-                cout << "Main image and markers has been cleared" << endl;
+        switch (c) {
+        case 'z':
+            saveMask(genMaskFileName(filename));
+            saveMarkers(genMarkersFileName(filename));
+            break;
+        case 'l':
+            loadMask(genMaskFileName(filename));
+            loadMarkers(genMarkersFileName(filename));
+            break;
+        case ' ':
+            runWatershed(imgGray);
+            break;
+        case 's':
+            if (!(curMask.rows > 0 && curMask.cols > 0)) {
+                cerr << "Mask is not created yet!" << endl;
+                continue;
             }
-            else if( c == 'w' || c == ' ' )
-            {
-                int i, j, compCount = 0;
-                vector<vector<Point> > contours;
-                vector<Vec4i> hierarchy;
-
-                findContours(markerMask, contours, hierarchy, RETR_CCOMP, CHAIN_APPROX_SIMPLE);
-
-                if( contours.empty() )
-                    continue;
-                Mat markers(markerMask.size(), CV_32S);
-                markers = Scalar::all(0);
-                int idx = 0;
-                for( ; idx >= 0; idx = hierarchy[idx][0], compCount++ )
-                    drawContours(markers, contours, idx, Scalar::all(compCount+1), -1, 8, hierarchy, INT_MAX);
-
-                if( compCount == 0 )
-                    continue;
-
-                vector<Vec3b> colorTab;
-                for( i = 0; i < compCount; i++ )
+            createMaskWindow();
+            imshow(MASK_WINDOW_NAME, curMask);
+        default :
+            if (!isColorSelectMode) {
+                if( c == 'r' )
                 {
-                    int b = theRNG().uniform(0, 255);
-                    int g = theRNG().uniform(0, 255);
-                    int r = theRNG().uniform(0, 255);
-
-                    colorTab.push_back(Vec3b((uchar)b, (uchar)g, (uchar)r));
+                    markerMask = Scalar::all(0);
+                    img0.copyTo(img);
+                    imshow( IMAGE_WINDOW_NAME, img );
+                    cout << "Main image and markers has been cleared" << endl;
                 }
-
-                double t = (double)getTickCount();
-                watershed( img0, markers );
-                t = (double)getTickCount() - t;
-                printf( "execution time = %gms\n", t*1000./getTickFrequency() );
-
-                Mat wshed(markers.size(), CV_8UC3);
-
-                // paint the watershed image
-                for( i = 0; i < markers.rows; i++ )
-                    for( j = 0; j < markers.cols; j++ )
-                    {
-                        int index = markers.at<int>(i,j);
-                        if( index == -1 )
-                            wshed.at<Vec3b>(i,j) = Vec3b(255,255,255);
-                        else if( index <= 0 || index > compCount )
-                            wshed.at<Vec3b>(i,j) = Vec3b(0,0,0);
-                        else
-                            wshed.at<Vec3b>(i,j) = colorTab[index - 1];
-                    }
-
-                curMask = wshed.clone();
-                wshed = wshed*0.5 + imgGray*0.5;
-
-                namedWindow( WATERSHED_TRANS_WINDOW_NAME, cv::WINDOW_NORMAL | CV_GUI_NORMAL);
-                imshow( WATERSHED_TRANS_WINDOW_NAME, wshed );
-                resizeWindow(WATERSHED_TRANS_WINDOW_NAME, IMG_WIDTH, IMG_HEIGHT);
-            } else if (c == 's') {
-                if (!(curMask.rows > 0 && curMask.cols > 0)) {
-                    cerr << "Mask is not created yet!" << endl;
-                    continue;
+                else if (c == 'f') {
+                    // TODO: do it in separate thread
+                    filter(validColors);
+                } else if (c >= '1' && c <= '9') {
+                    cout << "Setting brush thikness to " << c - '0' << endl;
+                    curThickness = c - '0';
+                } else if (c == 'h') {
+                    refreshMainImg();
                 }
-                createMaskWindow();
-                imshow(MASK_WINDOW_NAME, curMask);
-            } else if (c == 'z') {
-                saveMask(genMaskFileName(filename));
-                saveMarkers(genMarkersFileName(filename));
-            } else if (c == 'l') {
-                loadMask(genMaskFileName(filename));
-                loadMarkers(genMarkersFileName(filename));
-            } else if (c == 'f') {
-                // TODO: do it in separate thread
-                filter(validColors);
-            } else if (c >= '1' && c <= '9') {
-                cout << "Setting brush thikness to " << c - '0' << endl;
-                curThickness = c - '0';
-            } else if (c == 'h') {
-                refreshMainImg();
-            }
-        } else {
-            switch (c) {
-            case 't':
-                cout << "Selecting brown color(just terrain)" << endl;
-                curColor = justTerrainColor;
-                break;
-            case 'w':
-                cout << "Selecting white color(snow)" << endl;
-                curColor = snowColor;
-                break;
-            case 'y':
-                cout << "Selecting yellow color(sand)" << endl;
-                curColor = sandColor;
-                break;
-            case 'g':
-                cout << "Selecting dark-green color(forest)" << endl;
-                curColor = forestColor;
-                break;
-            case 'p':
-                cout << "Selecting light-green color(grass)" << endl;
-                curColor = grassColor;
-                break;
+            } else {
+                switch (c) {
+                case 't':
+                    cout << "Selecting brown color(just terrain)" << endl;
+                    curColor = justTerrainColor;
+                    break;
+                case 'w':
+                    cout << "Selecting white color(snow)" << endl;
+                    curColor = snowColor;
+                    break;
+                case 'y':
+                    cout << "Selecting yellow color(sand)" << endl;
+                    curColor = sandColor;
+                    break;
+                case 'g':
+                    cout << "Selecting dark-green color(forest)" << endl;
+                    curColor = forestColor;
+                    break;
+                case 'p':
+                    cout << "Selecting light-green color(grass)" << endl;
+                    curColor = grassColor;
+                    break;
 
-            case 'r':
-                cout << "Selecting gray color(roads)" << endl;
-                curColor = roadsColor;
-                break;
+                case 'r':
+                    cout << "Selecting gray color(roads)" << endl;
+                    curColor = roadsColor;
+                    break;
 
-            case 'd':
-                cout << "Selecting dark-gray color(buildings)" << endl;
-                curColor = buildingsColor;
-                break;
+                case 'd':
+                    cout << "Selecting dark-gray color(buildings)" << endl;
+                    curColor = buildingsColor;
+                    break;
 
-            case 'b':
-                cout << "Selecting blue color(water)" << endl;
-                curColor = waterColor;
-                break;
+                case 'b':
+                    cout << "Selecting blue color(water)" << endl;
+                    curColor = waterColor;
+                    break;
 
-            case 'c':
-                cout << "Selecting light-gray color(clouds)" << endl;
-                curColor = cloudsColor;
-                break;
-            case 'm':
-                isColorSelectMode = false;
-                cout << "Exiting color selecting mode" << endl;
-                break;
-            case 'z':
-                saveMask(genMaskFileName(filename));
-                break;
-            case 'l':
-                loadMask(genMaskFileName(filename));
-            case 9: // tab
-                break;
-            case -23: // alt
-                break;
-            default:
-                cout << "Unknown color" << endl;
-                curColor = unknownColor;
+                case 'c':
+                    cout << "Selecting light-gray color(clouds)" << endl;
+                    curColor = cloudsColor;
+                    break;
+                case 'm':
+                    isColorSelectMode = false;
+                    cout << "Exiting color selecting mode" << endl;
+                    break;
+                case 'z':
+                    saveMask(genMaskFileName(filename));
+                    break;
+                case 'l':
+                    loadMask(genMaskFileName(filename));
+                case 9: // tab
+                    break;
+                case -23: // alt
+                    break;
+                default:
+                    cout << "Unknown color" << endl;
+                    curColor = unknownColor;
+                }
             }
         }
     }
