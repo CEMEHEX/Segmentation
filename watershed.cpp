@@ -56,6 +56,8 @@ const CvScalar cloudsColor = CV_RGB(224, 224, 224);
 
 const CvScalar unknownColor = CV_RGB(0, 0, 0);
 
+const CvScalar notSpecifiedColor = CV_RGB(255, 0, 0);
+
 const string IMAGE_WINDOW_NAME("image");
 const string WATERSHED_TRANS_WINDOW_NAME("watershed transform");
 const string MASK_WINDOW_NAME("mask");
@@ -236,6 +238,8 @@ inline void saveMask(const string& maskFilename) {
 
     if ( !maskFilename.empty() )
     {
+        // Uncomment for asking before saving
+
         //        if (file_exists(maskFilename))  {
         //            cerr << "Warning! File " << maskFilename << " already exists.\n Are you sure you want to overwrite it (y/n)?" << endl;
         //            char c = (char)waitKey(0);
@@ -446,6 +450,65 @@ void runWatershed(Mat& imgGray) {
     resizeWindow(WATERSHED_TRANS_WINDOW_NAME, IMG_WIDTH, IMG_HEIGHT);
 }
 
+void recolorImg(Mat& m, const vector<Vec3b>& from, const vector<Vec3b>& to)
+{
+    assert(from.size() == to.size());
+    for (size_t i = 0; i < m.rows; ++i) {
+        for (size_t j = 0; j < m.cols; ++j) {
+            auto cur_col = m.at<Vec3b>(i, j);
+
+            for (size_t k = 0; k < from.size(); ++k) {
+                if (cur_col == from[k]) {
+                    m.at<Vec3b>(i, j) = to[k];
+                    break;
+                }
+            }
+        }
+    }
+}
+
+void mergeMasks(Mat& src, const Mat& dst) {
+    if (src.rows != dst.rows || src.cols != dst.cols) {
+        cerr << "Can't merge masks, incompatible sizes" << endl;
+        return;
+    }
+
+    for (size_t i = 0; i < src.rows; ++i) {
+        for (size_t j = 0; j < dst.cols; ++j) {
+            if (src.at<Vec3b>(i, j) == cvScalar2Vec3b(notSpecifiedColor)) {
+                src.at<Vec3b>(i, j) = dst.at<Vec3b>(i, j);
+            }
+        }
+    }
+}
+
+void runThresholdBasedMethod(const Mat& src) {
+    if (!(curMask.rows > 0 && curMask.cols > 0)) {
+        cerr << "Mask is not created yet!" << endl;
+        return;
+    }
+
+    std::vector<cv::Mat> channels;
+    cv::Mat image_hsv;
+
+    cv::cvtColor(src, image_hsv, CV_BGR2HSV);
+    cv::split(image_hsv, channels);
+
+    cv::Mat dst;
+    cv::threshold(channels[0], dst, 0, 255, cv::THRESH_BINARY | cv::THRESH_OTSU);
+
+    cv::cvtColor(dst, dst, cv::COLOR_GRAY2BGR);
+
+    vector<Vec3b> from = {Vec3b(0, 0, 0), Vec3b(255, 255, 255)};
+    vector<Vec3b> to = {Vec3b(255, 0, 255), Vec3b(255, 255, 0)};
+    recolorImg(dst, from, to);
+
+    mergeMasks(curMask, dst);
+
+    createMaskWindow();
+    imshow(MASK_WINDOW_NAME, curMask);
+}
+
 int main( int argc, char** argv )
 {
     cv::CommandLineParser parser(argc, argv, "{help h | | }{ @input | ../data/fruits.jpg | }");
@@ -496,14 +559,17 @@ int main( int argc, char** argv )
                 cout << "Please select color. Possible colors: \n"
                         // terrain
                         "\tt - brown(just terrain)\n"
-                        "\tw - white(snow)\n"
+                        "\tw - light-blue(snow)\n"
                         "\ty - yellow(sand)\n"
                         "\tg - dark-green(forest)\n"
                         "\tp - light-green(grass)\n"
                         "\tr - gray(roads)\n"
                         "\td - dark-gray(buildings)\n"
                         "\tb - blue(water)\n"
-                        "\tc - light-gray(clouds)" << endl;
+                        "\tc - light-gray(clouds)\n"
+                        "\tu - black(unknown)\n"
+                        "\tx - red(not specified)\n"
+                        "Type '-' or '=' to replace violet or cyan color with selected color respectively" << endl;
             }
             continue;
         }
@@ -519,6 +585,9 @@ int main( int argc, char** argv )
             break;
         case ' ':
             runWatershed(imgGray);
+            break;
+        case 13: // Enter
+            runThresholdBasedMethod(img0);
             break;
         case 's':
             if (!(curMask.rows > 0 && curMask.cols > 0)) {
@@ -547,13 +616,14 @@ int main( int argc, char** argv )
                     cout << "Main image has been refreshed!" << endl;
                 }
             } else {
+                vector<Vec3b> from, to = {cvScalar2Vec3b(curColor)};
                 switch (c) {
                 case 't':
                     cout << "Selecting brown color(just terrain)" << endl;
                     curColor = justTerrainColor;
                     break;
                 case 'w':
-                    cout << "Selecting white color(snow)" << endl;
+                    cout << "Selecting light-blue color(snow)" << endl;
                     curColor = snowColor;
                     break;
                 case 'y':
@@ -588,22 +658,45 @@ int main( int argc, char** argv )
                     cout << "Selecting light-gray color(clouds)" << endl;
                     curColor = cloudsColor;
                     break;
-                case 'm':
-                    isColorSelectMode = false;
-                    cout << "Exiting color selecting mode" << endl;
+
+                case 'x':
+                    cout << "Selecting red color(not specified)" << endl;
+                    curColor = notSpecifiedColor;
                     break;
-                case 'z':
-                    saveMask(genMaskFileName(filename));
+
+                case 'u':
+                    cout << "Selecting black color(unknown)" << endl;
+                    curColor = unknownColor;
                     break;
-                case 'l':
-                    loadMask(genMaskFileName(filename));
+
+                case '-':
+                    cerr << "Replacing violet color with selected color" << endl;
+
+                    from = {Vec3b(255, 0, 255)};
+                    recolorImg(curMask, {Vec3b(255, 0, 255)}, to);
+
+                    createMaskWindow();
+                    imshow(MASK_WINDOW_NAME, curMask);
+                    break;
+
+                case '=':
+                    cerr << "Replacing cyan color with selected color" << endl;
+
+                    from = {Vec3b(255, 255, 0)};
+                    recolorImg(curMask, from, to);
+
+                    createMaskWindow();
+                    imshow(MASK_WINDOW_NAME, curMask);
+                    break;
+
                 case 9: // tab
                     break;
+
                 case -23: // alt
                     break;
+
                 default:
-                    cout << "Unknown color" << endl;
-                    curColor = unknownColor;
+                    break;
                 }
             }
         }
