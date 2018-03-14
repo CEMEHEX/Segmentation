@@ -11,7 +11,7 @@
 #include <algorithm>
 #include <thread>
 
-#include "watershed.h"
+#include "Watershed.h"
 
 using namespace cv;
 using namespace std;
