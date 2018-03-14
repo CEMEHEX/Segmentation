@@ -45,3 +45,4 @@ CMakeLists.txt.user*
 
 # My scripts
 copy_executable.sh
+run_with_timeout.sh

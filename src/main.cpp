@@ -11,6 +11,8 @@
 #include <algorithm>
 #include <thread>
 
+#include "watershed.h"
+
 using namespace cv;
 using namespace std;
 
@@ -394,62 +396,6 @@ inline void loadMarkers(const string& filename) {
     cout << "Done!" << endl;
 }
 
-void watershed(Mat& imgGray) {
-    int i, j, compCount = 0;
-    vector<vector<Point> > contours;
-    vector<Vec4i> hierarchy;
-
-    findContours(markerMask, contours, hierarchy, RETR_CCOMP, CHAIN_APPROX_SIMPLE);
-
-    if( contours.empty() )
-        return;
-    Mat markers(markerMask.size(), CV_32S);
-    markers = Scalar::all(0);
-    int idx = 0;
-    for( ; idx >= 0; idx = hierarchy[idx][0], compCount++ )
-        drawContours(markers, contours, idx, Scalar::all(compCount+1), -1, 8, hierarchy, INT_MAX);
-
-    if( compCount == 0 )
-        return;
-
-    vector<Vec3b> colorTab;
-    for( i = 0; i < compCount; i++ )
-    {
-        int b = theRNG().uniform(0, 255);
-        int g = theRNG().uniform(0, 255);
-        int r = theRNG().uniform(0, 255);
-
-        colorTab.push_back(Vec3b((uchar)b, (uchar)g, (uchar)r));
-    }
-
-    double t = (double)getTickCount();
-    watershed( img0, markers );
-    t = (double)getTickCount() - t;
-    printf( "execution time = %gms\n", t*1000./getTickFrequency() );
-
-    Mat wshed(markers.size(), CV_8UC3);
-
-    // paint the watershed image
-    for( i = 0; i < markers.rows; i++ )
-        for( j = 0; j < markers.cols; j++ )
-        {
-            int index = markers.at<int>(i,j);
-            if( index == -1 )
-                wshed.at<Vec3b>(i,j) = Vec3b(255,255,255);
-            else if( index <= 0 || index > compCount )
-                wshed.at<Vec3b>(i,j) = Vec3b(0,0,0);
-            else
-                wshed.at<Vec3b>(i,j) = colorTab[index - 1];
-        }
-
-    curMask = wshed.clone();
-    wshed = wshed*0.5 + imgGray*0.5;
-
-    namedWindow( WATERSHED_TRANS_WINDOW_NAME, cv::WINDOW_NORMAL | CV_GUI_NORMAL);
-    imshow( WATERSHED_TRANS_WINDOW_NAME, wshed );
-    resizeWindow(WATERSHED_TRANS_WINDOW_NAME, IMG_WIDTH, IMG_HEIGHT);
-}
-
 void recolorImg(Mat& m, const vector<Vec3b>& from, const vector<Vec3b>& to)
 {
     assert(from.size() == to.size());
@@ -588,16 +534,28 @@ int main( int argc, char** argv )
             break;
         case 'l':
             loadMask(genMaskFileName(filename));
-            loadMarkers(genMarkersFileName(filename));
+            loadMarkers(genMarkersFileName(filename)) ;
             break;
-        case ' ':
-            watershed(imgGray);
+        case ' ': {
+            Mat wshed = runWatershed(img0, markerMask);
+
+            if (wshed.empty()) {
+                break;
+            }
+
+            curMask = wshed.clone();
+            wshed = wshed*0.5 + imgGray*0.5;
+
+            namedWindow( WATERSHED_TRANS_WINDOW_NAME, cv::WINDOW_NORMAL | CV_GUI_NORMAL);
+            imshow( WATERSHED_TRANS_WINDOW_NAME, wshed );
+            resizeWindow(WATERSHED_TRANS_WINDOW_NAME, IMG_WIDTH, IMG_HEIGHT);
             break;
+        }
         case 13: // Enter
             runThresholdBasedMethod(img0);
             break;
         case 's':
-            if (!(curMask.rows > 0 && curMask.cols > 0)) {
+            if (curMask.empty()) {
                 cerr << "Mask is not created yet!" << endl;
                 continue;
             }
