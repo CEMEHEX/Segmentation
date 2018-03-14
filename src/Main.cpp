@@ -12,6 +12,7 @@
 #include <thread>
 
 #include "Watershed.h"
+#include "ColorTypesExtensions.h"
 
 using namespace cv;
 using namespace std;
@@ -64,38 +65,6 @@ const string IMAGE_WINDOW_NAME("image");
 const string WATERSHED_TRANS_WINDOW_NAME("watershed transform");
 const string MASK_WINDOW_NAME("mask");
 
-namespace std {
-template<>
-class hash<CvScalar> {
-public:
-    size_t operator()(const CvScalar &cvScalar) const
-    {
-        const size_t prime = 31;
-        size_t res = 1;
-
-        size_t h1 = std::hash<double>()(cvScalar.val[0]);
-        size_t h2 = std::hash<double>()(cvScalar.val[1]);
-        size_t h3 = std::hash<double>()(cvScalar.val[2]);
-        size_t h4 = std::hash<double>()(cvScalar.val[3]);
-
-        res = prime * res + (h1 ^ (h1 >> 32));
-        res = prime * res + (h2 ^ (h2 >> 32));
-        res = prime * res + (h3 ^ (h3 >> 32));
-        res = prime * res + (h4 ^ (h4 >> 32));
-
-        return res;
-    }
-};
-}
-
-inline bool operator==(const CvScalar& lhs, const CvScalar& rhs)
-{
-    return lhs.val[0] == rhs.val[0] &&
-            lhs.val[1] == rhs.val[1] &&
-            lhs.val[2] == rhs.val[2] &&
-            lhs.val[3] == rhs.val[3];
-}
-
 void initColorSet(unordered_set<CvScalar>& colors) {
     colors.insert(justTerrainColor);
     colors.insert(snowColor);
@@ -120,21 +89,6 @@ void mark(Mat src_, CvPoint seed, CvScalar color=CV_RGB(255, 0, 0))
                  &comp,
                  CV_FLOODFILL_FIXED_RANGE + 8,
                  0);
-}
-
-inline CvScalar getColor(Mat& img, int i, int j) {
-    auto vec3bCol = img.at<Vec3b>(i, j);
-    auto r = vec3bCol[2];
-    auto g = vec3bCol[1];
-    auto b = vec3bCol[0];
-    return CV_RGB(r, g, b);
-}
-
-inline Vec3b cvScalar2Vec3b(const CvScalar& sc) {
-    auto r = sc.val[0];
-    auto g = sc.val[1];
-    auto b = sc.val[2];
-    return Vec3b(r, g, b);
 }
 
 inline void refreshMainImg() {

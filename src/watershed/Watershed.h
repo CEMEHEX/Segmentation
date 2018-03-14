@@ -5,4 +5,4 @@
 
 cv::Mat runWatershed(const cv::Mat& img0, const cv::Mat& markerMask);
 
-#endif
+#endif // WATERSHED_H
