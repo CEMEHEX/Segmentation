@@ -394,7 +394,7 @@ inline void loadMarkers(const string& filename) {
     cout << "Done!" << endl;
 }
 
-void runWatershed(Mat& imgGray) {
+void watershed(Mat& imgGray) {
     int i, j, compCount = 0;
     vector<vector<Point> > contours;
     vector<Vec4i> hierarchy;
@@ -495,7 +495,14 @@ void runThresholdBasedMethod(const Mat& src) {
     cv::split(image_hsv, channels);
 
     cv::Mat dst;
+    //    cv::threshold(channels[0], dst, 131, 255, cv::THRESH_BINARY);
+//        cv::adaptiveThreshold(channels[0], dst, 255, cv::ADAPTIVE_THRESH_GAUSSIAN_C, cv::THRESH_BINARY, 3, 2);
     cv::threshold(channels[0], dst, 0, 255, cv::THRESH_BINARY | cv::THRESH_OTSU);
+
+    int morph_elem = MORPH_RECT;
+    int morph_size = 1;
+    auto element = getStructuringElement(morph_elem, Size(2*morph_size + 1, 2*morph_size + 1), Point(morph_size, morph_size));
+    morphologyEx(dst, dst, MORPH_OPEN, element);
 
     cv::cvtColor(dst, dst, cv::COLOR_GRAY2BGR);
 
@@ -584,7 +591,7 @@ int main( int argc, char** argv )
             loadMarkers(genMarkersFileName(filename));
             break;
         case ' ':
-            runWatershed(imgGray);
+            watershed(imgGray);
             break;
         case 13: // Enter
             runThresholdBasedMethod(img0);
