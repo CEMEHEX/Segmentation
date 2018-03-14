@@ -9,6 +9,7 @@
 #include "utils/ColorTypesExtensions.h"
 #include "threshold/HueThreshold.h"
 #include "ImageUtils.h"
+#include "Filter.h"
 
 using namespace cv;
 using namespace std;
@@ -238,74 +239,6 @@ inline void loadMask(const string& maskFileName) {
     cout << "Done!" << endl;
 }
 
-void processWindow(Mat& img, unordered_set<CvScalar>& validColors, int winSize, int x, int y) {
-    unordered_map<CvScalar, int> colorsCnt;
-
-    int sizeX = min(winSize, img.cols - x);
-    int sizeY = min(winSize, img.rows - y);
-
-    for (size_t i = x; i < x + sizeX; ++i) {
-        for (size_t j = y; j < y + sizeY; ++j) {
-            if (i >= img.cols || j >= img.rows) {
-                cerr << "Point (" << i << ", " << j << ") doesn't belong to image" << endl << endl;
-                return;
-            }
-            auto curPixelCol = getColor(img, j, i);
-
-            if (validColors.find(curPixelCol) != validColors.end()) {
-                colorsCnt[curPixelCol]++;
-            }
-        }
-    }
-
-    if (colorsCnt.empty()) {
-        cerr << "No valid colors in window (" << x << ", " << y <<
-                ") - (" << x + sizeX << ", " << y + sizeY << "),\n skipping" << endl;
-        return;
-    }
-
-    auto mostRecentColor = std::max_element(colorsCnt.begin(), colorsCnt.end(),
-                                            [](const pair<CvScalar, int>& p1, const pair<CvScalar, int>& p2) {
-        return p1.second < p2.second; })->first;
-
-    for (size_t i = x; i < x + sizeX; ++i) {
-        for (size_t j = y; j < y + sizeY; ++j) {
-            auto curPixelCol = getColor(img, j, i);
-            if (validColors.find(curPixelCol) == validColors.end()) {
-                //                cerr << curPixelCol.val[2] << endl;
-                //                cerr << curPixelCol.val[1] << endl;
-                //                cerr << curPixelCol.val[0] << endl << endl;
-                img.at<Vec3b>(j, i) = cvScalar2Vec3b(mostRecentColor);
-            }
-        }
-    }
-}
-
-void invalidColorFilter(Mat& img, unordered_set<CvScalar>& validColors, int winSize) {
-    if (img.cols <= winSize || img.rows <= winSize || winSize <= 0) {
-        cerr << "Bad window size" << endl;
-        return;
-    }
-
-    for (size_t i = 0; i < img.cols ; i += winSize) {
-        for (size_t j = 0; j < img.rows; j += winSize) {
-            processWindow(img, validColors, winSize, i, j);
-        }
-    }
-}
-
-void filter(unordered_set<CvScalar>& validColors, int ksize = 10) {
-    if (!(curMask.rows > 0 && curMask.cols > 0)) {
-        cerr << "Mask is not created yet!" << endl;
-        return;
-    }
-
-    cout << "Applying filter to mask" << endl;
-    invalidColorFilter( curMask, validColors, ksize );
-    cout << "done!" << endl;
-    imshow(MASK_WINDOW_NAME, curMask);
-}
-
 inline string genMarkersFileName(const string& filename) {
     string pureFilename = removeExtention(filename);
     if (pureFilename.empty()) {
@@ -480,8 +413,17 @@ int main( int argc, char** argv )
                     cout << "Main image and markers has been cleared" << endl;
                 }
                 else if (c == 'f') {
-                    // TODO: do it in separate thread
-                    filter(validColors);
+                    if (curMask.empty()) {
+                        cerr << "Mask is not created yet!" << endl;
+                        continue;
+                    }
+
+                    cout << "Applying filter to mask" << endl;
+                    // TODO: speed it up and do it in separate thread
+                    invalidColorFilter( curMask, validColors );
+                    cout << "done!" << endl;
+                    createMaskWindow();
+                    imshow(MASK_WINDOW_NAME, curMask);
                 } else if (c >= '1' && c <= '9') {
                     cout << "Setting brush thikness to " << c - '0' << endl;
                     curThickness = c - '0';
