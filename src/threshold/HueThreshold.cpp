@@ -5,11 +5,7 @@
 
 #include "ImageUtils.h"
 
-cv::Mat runThresholdBasedMethod(const cv::Mat& src, const cv::Mat& curMask) {
-    if (curMask.empty()) {
-        return cv::Mat();
-    }
-
+cv::Mat runThresholdBasedMethod(const cv::Mat& src) {
     std::vector<cv::Mat> channels;
     cv::Mat image_hsv;
 

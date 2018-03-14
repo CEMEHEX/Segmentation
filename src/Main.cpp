@@ -457,12 +457,12 @@ int main( int argc, char** argv )
             break;
         }
         case 13: { // Enter
-            Mat dst = runThresholdBasedMethod(img0, curMask);
-
-            if(dst.empty()) {
+            if(curMask.empty()) {
                 cerr << "Mask is not created yet!" << endl;
                 break;
             }
+
+            Mat dst = runThresholdBasedMethod(img0);
 
             mergeMasks(curMask, dst);
             createMaskWindow();

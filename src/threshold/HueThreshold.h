@@ -3,6 +3,6 @@
 
 #include <opencv2/core/utility.hpp>
 
-cv::Mat runThresholdBasedMethod(const cv::Mat& src, const cv::Mat& curMask);
+cv::Mat runThresholdBasedMethod(const cv::Mat& src);
 
 #endif
