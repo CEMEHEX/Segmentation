@@ -392,7 +392,6 @@ int main( int argc, char** argv )
             Mat dst = runThresholdBasedMethod(img0);
 
             mergeMasks(curMask, dst);
-            createMaskWindow();
             imshow(MASK_WINDOW_NAME, curMask);
             break;
         }
@@ -422,7 +421,6 @@ int main( int argc, char** argv )
                     // TODO: speed it up and do it in separate thread
                     invalidColorFilter( curMask, validColors );
                     cout << "done!" << endl;
-                    createMaskWindow();
                     imshow(MASK_WINDOW_NAME, curMask);
                 } else if (c >= '1' && c <= '9') {
                     cout << "Setting brush thikness to " << c - '0' << endl;
@@ -486,22 +484,20 @@ int main( int argc, char** argv )
                     break;
 
                 case '-':
-                    cerr << "Replacing violet color with selected color" << endl;
+                    cout << "Replacing violet color with selected color" << endl;
 
                     from = {Vec3b(255, 0, 255)};
                     recolorImg(curMask, {Vec3b(255, 0, 255)}, to);
 
-                    createMaskWindow();
                     imshow(MASK_WINDOW_NAME, curMask);
                     break;
 
                 case '=':
-                    cerr << "Replacing cyan color with selected color" << endl;
+                    cout << "Replacing cyan color with selected color" << endl;
 
                     from = {Vec3b(255, 255, 0)};
                     recolorImg(curMask, from, to);
 
-                    createMaskWindow();
                     imshow(MASK_WINDOW_NAME, curMask);
                     break;
 
