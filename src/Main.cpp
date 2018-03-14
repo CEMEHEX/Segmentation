@@ -11,8 +11,10 @@
 #include <algorithm>
 #include <thread>
 
-#include "Watershed.h"
-#include "ColorTypesExtensions.h"
+#include "watershed/Watershed.h"
+#include "utils/ColorTypesExtensions.h"
+#include "threshold/HueThreshold.h"
+#include "ImageUtils.h"
 
 using namespace cv;
 using namespace std;
@@ -350,23 +352,6 @@ inline void loadMarkers(const string& filename) {
     cout << "Done!" << endl;
 }
 
-void recolorImg(Mat& m, const vector<Vec3b>& from, const vector<Vec3b>& to)
-{
-    assert(from.size() == to.size());
-    for (size_t i = 0; i < m.rows; ++i) {
-        for (size_t j = 0; j < m.cols; ++j) {
-            auto cur_col = m.at<Vec3b>(i, j);
-
-            for (size_t k = 0; k < from.size(); ++k) {
-                if (cur_col == from[k]) {
-                    m.at<Vec3b>(i, j) = to[k];
-                    break;
-                }
-            }
-        }
-    }
-}
-
 void mergeMasks(Mat& src, const Mat& dst) {
     if (src.rows != dst.rows || src.cols != dst.cols) {
         cerr << "Can't merge masks, incompatible sizes" << endl;
@@ -380,40 +365,6 @@ void mergeMasks(Mat& src, const Mat& dst) {
             }
         }
     }
-}
-
-void runThresholdBasedMethod(const Mat& src) {
-    if (!(curMask.rows > 0 && curMask.cols > 0)) {
-        cerr << "Mask is not created yet!" << endl;
-        return;
-    }
-
-    std::vector<cv::Mat> channels;
-    cv::Mat image_hsv;
-
-    cv::cvtColor(src, image_hsv, CV_BGR2HSV);
-    cv::split(image_hsv, channels);
-
-    cv::Mat dst;
-    //    cv::threshold(channels[0], dst, 131, 255, cv::THRESH_BINARY);
-//        cv::adaptiveThreshold(channels[0], dst, 255, cv::ADAPTIVE_THRESH_GAUSSIAN_C, cv::THRESH_BINARY, 3, 2);
-    cv::threshold(channels[0], dst, 0, 255, cv::THRESH_BINARY | cv::THRESH_OTSU);
-
-    int morph_elem = MORPH_RECT;
-    int morph_size = 1;
-    auto element = getStructuringElement(morph_elem, Size(2*morph_size + 1, 2*morph_size + 1), Point(morph_size, morph_size));
-    morphologyEx(dst, dst, MORPH_OPEN, element);
-
-    cv::cvtColor(dst, dst, cv::COLOR_GRAY2BGR);
-
-    vector<Vec3b> from = {Vec3b(0, 0, 0), Vec3b(255, 255, 255)};
-    vector<Vec3b> to = {Vec3b(255, 0, 255), Vec3b(255, 255, 0)};
-    recolorImg(dst, from, to);
-
-    mergeMasks(curMask, dst);
-
-    createMaskWindow();
-    imshow(MASK_WINDOW_NAME, curMask);
 }
 
 int main( int argc, char** argv )
@@ -505,9 +456,19 @@ int main( int argc, char** argv )
             resizeWindow(WATERSHED_TRANS_WINDOW_NAME, IMG_WIDTH, IMG_HEIGHT);
             break;
         }
-        case 13: // Enter
-            runThresholdBasedMethod(img0);
+        case 13: { // Enter
+            Mat dst = runThresholdBasedMethod(img0, curMask);
+
+            if(dst.empty()) {
+                cerr << "Mask is not created yet!" << endl;
+                break;
+            }
+
+            mergeMasks(curMask, dst);
+            createMaskWindow();
+            imshow(MASK_WINDOW_NAME, curMask);
             break;
+        }
         case 's':
             if (curMask.empty()) {
                 cerr << "Mask is not created yet!" << endl;
