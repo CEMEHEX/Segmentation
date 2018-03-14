@@ -1,14 +1,5 @@
-#include <opencv2/core/utility.hpp>
 #include "opencv2/imgproc.hpp"
-#include "opencv2/imgcodecs.hpp"
 
-#include <cstdio>
-#include <iostream>
-#include <unistd.h>
-#include <unordered_set>
-#include <unordered_map>
-#include <algorithm>
-#include <thread>
 
 bool operator==(const CvScalar& lhs, const CvScalar& rhs)
 {

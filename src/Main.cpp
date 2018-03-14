@@ -1,15 +1,9 @@
-#include <opencv2/core/utility.hpp>
-#include "opencv2/imgproc.hpp"
-#include "opencv2/imgcodecs.hpp"
 #include "opencv2/highgui.hpp"
 
-#include <cstdio>
 #include <iostream>
 #include <unistd.h>
 #include <unordered_set>
 #include <unordered_map>
-#include <algorithm>
-#include <thread>
 
 #include "watershed/Watershed.h"
 #include "utils/ColorTypesExtensions.h"
