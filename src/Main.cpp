@@ -402,6 +402,19 @@ int main( int argc, char** argv )
             }
             createMaskWindow();
             imshow(MASK_WINDOW_NAME, curMask);
+            break;
+        case 'f':
+            if (curMask.empty()) {
+                cerr << "Mask is not created yet!" << endl;
+                continue;
+            }
+
+            cout << "Applying filter to mask" << endl;
+            // TODO: speed it up and do it in separate thread
+            invalidColorFilter( curMask, validColors );
+            cout << "done!" << endl;
+            imshow(MASK_WINDOW_NAME, curMask);
+            break;
         default :
             if (!isColorSelectMode) {
                 if( c == 'r' )
@@ -411,18 +424,7 @@ int main( int argc, char** argv )
                     imshow( IMAGE_WINDOW_NAME, img );
                     cout << "Main image and markers has been cleared" << endl;
                 }
-                else if (c == 'f') {
-                    if (curMask.empty()) {
-                        cerr << "Mask is not created yet!" << endl;
-                        continue;
-                    }
-
-                    cout << "Applying filter to mask" << endl;
-                    // TODO: speed it up and do it in separate thread
-                    invalidColorFilter( curMask, validColors );
-                    cout << "done!" << endl;
-                    imshow(MASK_WINDOW_NAME, curMask);
-                } else if (c >= '1' && c <= '9') {
+                else if (c >= '1' && c <= '9') {
                     cout << "Setting brush thikness to " << c - '0' << endl;
                     curThickness = c - '0';
                 } else if (c == 'h') {
